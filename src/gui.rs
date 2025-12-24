@@ -37,7 +37,7 @@ impl Default for AutoSadeApp {
         
         Self {
             config,
-            usuario: "1".to_string(),
+            usuario: String::new(),
             comunicacion_inicio: String::new(),
             comunicacion_final: String::new(),
             estado: Arc::new(Mutex::new(estado_inicial)),
@@ -109,9 +109,13 @@ impl eframe::App for AutoSadeApp {
                                     .spacing([15.0, 12.0])
                                     .show(ui, |ui| {
                                         ui.label("Usuario (1=Erica, 2=Cecilia):");
-                                        ui.add(egui::TextEdit::singleline(&mut self.usuario)
+                                        let usuario_response = ui.add(egui::TextEdit::singleline(&mut self.usuario)
                                             .desired_width(80.0)
                                             .horizontal_align(egui::Align::Center));
+                                        // Dar foco al campo de usuario cuando está vacío
+                                        if self.usuario.is_empty() && self.comunicacion_inicio.is_empty() {
+                                            usuario_response.request_focus();
+                                        }
                                         ui.end_row();
                                         
                                         ui.label("Comunicación Inicial:");
