@@ -75,48 +75,69 @@ impl AutoSadeApp {
 impl eframe::App for AutoSadeApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         egui::CentralPanel::default().show(ctx, |ui| {
+            // Obtener el ancho disponible para centrar contenido
+            let panel_width = ui.available_width();
+            let content_width = 340.0_f32.min(panel_width - 40.0);
+            
             ui.vertical_centered(|ui| {
-                ui.add_space(20.0);
+                ui.add_space(30.0);
                 
-                // Título
-                ui.heading("Automatización Comunicaciones SADE");
+                // Título con estilo
+                ui.label(
+                    egui::RichText::new("Automatización Comunicaciones SADE")
+                        .heading()
+                        .size(22.0)
+                );
                 
-                ui.add_space(20.0);
+                ui.add_space(25.0);
                 
-                // Frame de inputs
-                egui::Frame::default()
-                    .inner_margin(egui::Margin::same(15.0))
-                    .fill(ui.style().visuals.extreme_bg_color)
-                    .rounding(egui::Rounding::same(8.0))
-                    .show(ui, |ui| {
-                        egui::Grid::new("input_grid")
-                            .num_columns(2)
-                            .spacing([10.0, 10.0])
+                // Frame de inputs centrado
+                ui.allocate_ui_with_layout(
+                    egui::vec2(content_width, 0.0),
+                    egui::Layout::top_down(egui::Align::Center),
+                    |ui| {
+                        egui::Frame::default()
+                            .inner_margin(egui::Margin::same(20.0))
+                            .fill(ui.style().visuals.extreme_bg_color)
+                            .rounding(egui::Rounding::same(10.0))
+                            .stroke(egui::Stroke::new(1.0, ui.style().visuals.widgets.noninteractive.bg_stroke.color))
                             .show(ui, |ui| {
-                                ui.label("Usuario (1=Erica, 2=Cecilia):");
-                                ui.add(egui::TextEdit::singleline(&mut self.usuario)
-                                    .desired_width(50.0));
-                                ui.end_row();
+                                ui.set_width(content_width - 40.0);
                                 
-                                ui.label("Comunicación Inicial:");
-                                ui.add(egui::TextEdit::singleline(&mut self.comunicacion_inicio)
-                                    .desired_width(50.0));
-                                ui.end_row();
-                                
-                                ui.label("Comunicación Final:");
-                                ui.add(egui::TextEdit::singleline(&mut self.comunicacion_final)
-                                    .desired_width(50.0));
-                                ui.end_row();
+                                egui::Grid::new("input_grid")
+                                    .num_columns(2)
+                                    .spacing([15.0, 12.0])
+                                    .show(ui, |ui| {
+                                        ui.label("Usuario (1=Erica, 2=Cecilia):");
+                                        ui.add(egui::TextEdit::singleline(&mut self.usuario)
+                                            .desired_width(80.0)
+                                            .horizontal_align(egui::Align::Center));
+                                        ui.end_row();
+                                        
+                                        ui.label("Comunicación Inicial:");
+                                        ui.add(egui::TextEdit::singleline(&mut self.comunicacion_inicio)
+                                            .desired_width(80.0)
+                                            .horizontal_align(egui::Align::Center));
+                                        ui.end_row();
+                                        
+                                        ui.label("Comunicación Final:");
+                                        ui.add(egui::TextEdit::singleline(&mut self.comunicacion_final)
+                                            .desired_width(80.0)
+                                            .horizontal_align(egui::Align::Center));
+                                        ui.end_row();
+                                    });
                             });
-                    });
+                    },
+                );
                 
-                ui.add_space(20.0);
+                ui.add_space(25.0);
                 
-                // Botones
+                // Botones con ancho uniforme
+                let button_width = 180.0;
                 let botones_habilitados = self.botones_estan_habilitados();
                 
                 ui.add_enabled_ui(botones_habilitados, |ui| {
-                    if ui.button("Descargar").clicked() {
+                    if ui.add_sized([button_width, 32.0], egui::Button::new("⬇  Descargar")).clicked() {
                         self.habilitar_botones(false);
                         self.actualizar_estado(EstadoApp::Procesando("Descargando comunicaciones...".to_string()));
                         
@@ -163,9 +184,9 @@ impl eframe::App for AutoSadeApp {
                         });
                     }
                     
-                    ui.add_space(5.0);
+                    ui.add_space(8.0);
                     
-                    if ui.button("Mover archivos").clicked() {
+                    if ui.add_sized([button_width, 32.0], egui::Button::new("📁  Mover archivos")).clicked() {
                         self.habilitar_botones(false);
                         self.actualizar_estado(EstadoApp::Procesando("Moviendo archivos...".to_string()));
                         
@@ -190,9 +211,9 @@ impl eframe::App for AutoSadeApp {
                         self.habilitar_botones(true);
                     }
                     
-                    ui.add_space(5.0);
+                    ui.add_space(8.0);
                     
-                    if ui.button("Procesar archivos").clicked() {
+                    if ui.add_sized([button_width, 32.0], egui::Button::new("⚙  Procesar archivos")).clicked() {
                         self.habilitar_botones(false);
                         self.actualizar_estado(EstadoApp::Procesando("Procesando PDFs...".to_string()));
                         
