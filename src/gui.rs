@@ -269,18 +269,54 @@ impl eframe::App for AutoSadeApp {
     }
 }
 
+/// Carga el icono desde el archivo ico
+fn cargar_icono() -> Option<egui::IconData> {
+    // Intentar cargar desde múltiples ubicaciones
+    let posibles_rutas = [
+        std::path::PathBuf::from("icono.ico"),
+        std::env::current_exe().ok()?.parent()?.join("icono.ico"),
+    ];
+    
+    for ruta in &posibles_rutas {
+        if ruta.exists() {
+            if let Ok(file) = std::fs::File::open(ruta) {
+                let reader = std::io::BufReader::new(file);
+                if let Ok(icon_dir) = image::codecs::ico::IcoDecoder::new(reader) {
+                    if let Ok(img) = image::DynamicImage::from_decoder(icon_dir) {
+                        let rgba = img.to_rgba8();
+                        let (width, height) = rgba.dimensions();
+                        return Some(egui::IconData {
+                            rgba: rgba.into_raw(),
+                            width,
+                            height,
+                        });
+                    }
+                }
+            }
+        }
+    }
+    None
+}
+
 /// Ejecuta la aplicación GUI
 pub fn run() -> eframe::Result<()> {
+    let mut viewport = egui::ViewportBuilder::default()
+        .with_inner_size([400.0, 450.0])
+        .with_min_inner_size([350.0, 400.0]);
+    
+    // Cargar icono si está disponible
+    if let Some(icon) = cargar_icono() {
+        viewport = viewport.with_icon(std::sync::Arc::new(icon));
+    }
+    
     let options = eframe::NativeOptions {
-        viewport: egui::ViewportBuilder::default()
-            .with_inner_size([400.0, 450.0])
-            .with_min_inner_size([350.0, 400.0]),
+        viewport,
         centered: true,
         ..Default::default()
     };
     
     eframe::run_native(
-        "SADE",
+        "Auto-Sade",
         options,
         Box::new(|cc| Ok(Box::new(AutoSadeApp::new(cc)))),
     )

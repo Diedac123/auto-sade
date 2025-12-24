@@ -37,3 +37,9 @@ thiserror = "2"
 # Sistema de archivos
 walkdir = "2"
 dirs = "5"
+
+# Icono de ventana
+image = { version = "0.25", default-features = false, features = ["ico"] }
+
+[build-dependencies]
+winres = "0.1"
