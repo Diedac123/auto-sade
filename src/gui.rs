@@ -275,6 +275,7 @@ pub fn run() -> eframe::Result<()> {
         viewport: egui::ViewportBuilder::default()
             .with_inner_size([400.0, 450.0])
             .with_min_inner_size([350.0, 400.0]),
+        centered: true,
         ..Default::default()
     };
     
