@@ -1,0 +1,39 @@
+[package]
+name = "auto-sade"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+# Variables de entorno
+dotenvy = "0.15"
+
+# Regex
+regex = "1"
+
+# Manejo de PDFs
+lopdf = "0.34"
+pdf-extract = "0.7"
+
+# Manejo de Excel
+calamine = "0.26"
+rust_xlsxwriter = "0.80"
+
+# Fecha y hora
+chrono = "0.4"
+
+# Automatización web
+chromiumoxide = { version = "0.7", features = ["tokio-runtime"] }
+tokio = { version = "1", features = ["full"] }
+futures = "0.3"
+
+# GUI
+eframe = "0.29"
+egui = "0.29"
+
+# Manejo de errores
+anyhow = "1"
+thiserror = "2"
+
+# Sistema de archivos
+walkdir = "2"
+dirs = "5"
