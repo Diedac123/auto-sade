@@ -269,30 +269,21 @@ impl eframe::App for AutoSadeApp {
     }
 }
 
-/// Carga el icono desde el archivo ico
+/// Carga el icono incrustado en el ejecutable
 fn cargar_icono() -> Option<egui::IconData> {
-    // Intentar cargar desde múltiples ubicaciones
-    let posibles_rutas = [
-        std::path::PathBuf::from("icono.ico"),
-        std::env::current_exe().ok()?.parent()?.join("icono.ico"),
-    ];
+    // Icono incrustado en el ejecutable durante compilación
+    static ICON_BYTES: &[u8] = include_bytes!("../icono.ico");
     
-    for ruta in &posibles_rutas {
-        if ruta.exists() {
-            if let Ok(file) = std::fs::File::open(ruta) {
-                let reader = std::io::BufReader::new(file);
-                if let Ok(icon_dir) = image::codecs::ico::IcoDecoder::new(reader) {
-                    if let Ok(img) = image::DynamicImage::from_decoder(icon_dir) {
-                        let rgba = img.to_rgba8();
-                        let (width, height) = rgba.dimensions();
-                        return Some(egui::IconData {
-                            rgba: rgba.into_raw(),
-                            width,
-                            height,
-                        });
-                    }
-                }
-            }
+    let cursor = std::io::Cursor::new(ICON_BYTES);
+    if let Ok(icon_dir) = image::codecs::ico::IcoDecoder::new(cursor) {
+        if let Ok(img) = image::DynamicImage::from_decoder(icon_dir) {
+            let rgba = img.to_rgba8();
+            let (width, height) = rgba.dimensions();
+            return Some(egui::IconData {
+                rgba: rgba.into_raw(),
+                width,
+                height,
+            });
         }
     }
     None
