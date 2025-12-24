@@ -84,7 +84,7 @@ impl eframe::App for AutoSadeApp {
                 
                 // Título con estilo
                 ui.label(
-                    egui::RichText::new("Automatización Comunicaciones SADE")
+                    egui::RichText::new("Manejo Comunicaciones Inventario")
                         .heading()
                         .size(22.0)
                 );
