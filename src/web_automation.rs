@@ -13,38 +13,6 @@ pub struct ResultadoDescarga {
     pub total_comunicaciones: u32,
 }
 
-/// Espera a que no haya archivos .crdownload en la carpeta de descargas
-async fn esperar_descargas_completas(ruta_descargas: &PathBuf, timeout_secs: u64) -> bool {
-    let inicio = std::time::Instant::now();
-    let timeout = Duration::from_secs(timeout_secs);
-    
-    loop {
-        if inicio.elapsed() > timeout {
-            eprintln!("Timeout esperando descargas");
-            return false;
-        }
-        
-        let mut hay_descargando = false;
-        
-        if let Ok(entries) = std::fs::read_dir(ruta_descargas) {
-            for entry in entries.flatten() {
-                if let Some(ext) = entry.path().extension() {
-                    if ext == "crdownload" || ext == "tmp" {
-                        hay_descargando = true;
-                        break;
-                    }
-                }
-            }
-        }
-        
-        if !hay_descargando {
-            return true;
-        }
-        
-        sleep(Duration::from_millis(500)).await;
-    }
-}
-
 /// Descarga comunicaciones desde SADE
 /// Equivalente a `descargar_comunicaciones` en Python
 pub async fn descargar_comunicaciones(
@@ -182,7 +150,7 @@ pub async fn descargar_comunicaciones(
         
         // Descargar archivos adjuntos
         loop {
-            sleep(Duration::from_millis(500)).await;
+            sleep(Duration::from_millis(700)).await;
             let download_icons = page.find_elements(".z-icon-download").await?;
             
             if download_icons.is_empty() {
@@ -194,21 +162,16 @@ pub async fn descargar_comunicaciones(
                 if let Err(e) = download_icons[i].click().await {
                     eprintln!("Error descargando archivo {}: {}", i, e);
                 }
-                // Esperar más tiempo entre descargas
-                sleep(Duration::from_secs(1)).await;
+                // Espera corta entre clics de descarga
+                sleep(Duration::from_millis(500)).await;
             }
             
-            // Esperar a que terminen las descargas antes de continuar
-            on_status(&format!(
-                "Comunicación {} - esperando descargas...",
-                num_comunicacion
-            ));
-            esperar_descargas_completas(&ruta_descargas, 30).await;
+            // Espera fija para que las descargas terminen (2 segundos)
+            sleep(Duration::from_secs(2)).await;
             
-            // Verificar si hay más páginas de adjuntos - simplificado
+            // Verificar si hay más páginas de adjuntos
             let next_btns = page.find_elements(".z-paging-button.z-paging-next").await?;
             if next_btns.len() > 1 {
-                // Intentar hacer clic en el segundo botón de siguiente
                 if next_btns[1].click().await.is_err() {
                     break;
                 }
@@ -228,13 +191,11 @@ pub async fn descargar_comunicaciones(
         comunicaciones_procesadas += 1;
     }
     
-    // Esperar a que todas las descargas terminen antes de cerrar
-    on_status("Finalizando descargas pendientes...");
-    esperar_descargas_completas(&ruta_descargas, 60).await;
+    // Espera final breve antes de cerrar
+    on_status("Finalizando...");
+    sleep(Duration::from_secs(3)).await;
     
-    // Cerrar navegador limpiamente
-    on_status("Cerrando navegador...");
-    sleep(Duration::from_secs(2)).await;
+    // Cerrar navegador
     drop(browser);
     handle.abort();
     
