@@ -10,25 +10,32 @@ pub struct Credenciales {
     pub password: String,
 }
 
-/// Configuración de la aplicación cargada desde variables de entorno
+/// Configuración de la aplicación
 #[derive(Debug, Clone)]
 pub struct Config {
     pub ruta_archivos: PathBuf,
     pub ruta_excel: PathBuf,
-    pub ruta_icono: Option<PathBuf>,
     pub usuarios: HashMap<String, Credenciales>,
 }
 
+/// Obtiene el directorio donde está el ejecutable
+fn obtener_directorio_exe() -> PathBuf {
+    env::current_exe()
+        .ok()
+        .and_then(|p| p.parent().map(|p| p.to_path_buf()))
+        .unwrap_or_else(|| PathBuf::from("."))
+}
+
 impl Config {
-    /// Carga la configuración desde las variables de entorno
+    /// Carga la configuración - las rutas se basan en el directorio del ejecutable
     pub fn from_env() -> Result<Self> {
-        let ruta_archivos = env::var("RUTA_ARCHIVOS")
-            .context("Variable de entorno RUTA_ARCHIVOS no encontrada. Asegúrate de que el archivo .env existe y contiene esta variable.")?;
+        let dir_exe = obtener_directorio_exe();
         
-        let ruta_excel = env::var("RUTA_EXCEL")
-            .context("Variable de entorno RUTA_EXCEL no encontrada. Asegúrate de que el archivo .env existe y contiene esta variable.")?;
+        // RUTA_ARCHIVOS = directorio del exe (donde están los PDFs)
+        let ruta_archivos = dir_exe.clone();
         
-        let ruta_icono = env::var("RUTA_ICONO").ok().map(PathBuf::from);
+        // RUTA_EXCEL = archivo "Listado RDP a copiar.xlsx" en el directorio del exe
+        let ruta_excel = dir_exe.join("Listado RDP a copiar.xlsx");
         
         let mut usuarios = HashMap::new();
         
@@ -60,10 +67,18 @@ impl Config {
             );
         }
         
+        // Verificar que hay al menos un usuario configurado
+        if usuarios.is_empty() {
+            anyhow::bail!("No se encontraron credenciales de usuario en el archivo .env");
+        }
+        
+        // Crear subcarpetas necesarias si no existen
+        let _ = std::fs::create_dir_all(ruta_archivos.join("Procesados"));
+        let _ = std::fs::create_dir_all(ruta_archivos.join("Revisar"));
+        
         Ok(Config {
-            ruta_archivos: PathBuf::from(ruta_archivos),
-            ruta_excel: PathBuf::from(ruta_excel),
-            ruta_icono,
+            ruta_archivos,
+            ruta_excel,
             usuarios,
         })
     }
@@ -75,12 +90,12 @@ impl Config {
 }
 
 impl Default for Config {
-    /// Crea una configuración vacía/por defecto cuando no hay .env
+    /// Crea una configuración por defecto basada en el directorio del ejecutable
     fn default() -> Self {
+        let dir_exe = obtener_directorio_exe();
         Config {
-            ruta_archivos: PathBuf::new(),
-            ruta_excel: PathBuf::new(),
-            ruta_icono: None,
+            ruta_archivos: dir_exe.clone(),
+            ruta_excel: dir_exe.join("Listado RDP a copiar.xlsx"),
             usuarios: HashMap::new(),
         }
     }
