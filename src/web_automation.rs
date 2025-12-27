@@ -22,16 +22,16 @@ pub async fn descargar_comunicaciones(
     config: &Config,
     on_status: impl Fn(&str),
 ) -> Result<ResultadoDescarga> {
-    let credenciales = config.get_credenciales(usuario_id)
+    let credenciales = config
+        .get_credenciales(usuario_id)
         .context("Credenciales de usuario no encontradas")?;
-    
+
     // Obtener carpeta de descargas
-    let ruta_descargas = dirs::download_dir()
-        .unwrap_or_else(|| PathBuf::from("."));
-    
+    let ruta_descargas = dirs::download_dir().unwrap_or_else(|| PathBuf::from("."));
+
     // Configurar navegador con opciones para permitir descargas inseguras
     let browser_config = BrowserConfig::builder()
-        .with_head()  // Mostrar navegador (no headless)
+        .with_head() // Mostrar navegador (no headless)
         .arg("--disable-web-security")
         .arg("--allow-running-insecure-content")
         .arg("--disable-features=IsolateOrigins,site-per-process")
@@ -40,67 +40,109 @@ pub async fn descargar_comunicaciones(
         .arg("--unsafely-treat-insecure-origin-as-secure=http://euc.gcba.gob.ar")
         .arg("--ignore-certificate-errors")
         .arg("--disable-popup-blocking")
-        .arg(format!("--download.default_directory={}", ruta_descargas.display()))
+        .arg(format!(
+            "--download.default_directory={}",
+            ruta_descargas.display()
+        ))
         .build()
         .map_err(|e| anyhow::anyhow!("Error al configurar navegador: {}", e))?;
-    
+
     let (browser, mut handler) = Browser::launch(browser_config)
         .await
         .context("Error al iniciar navegador")?;
-    
+
     // Manejar eventos del navegador en segundo plano
-    let handle = tokio::spawn(async move {
-        while let Some(_event) = handler.next().await {}
-    });
-    
-    let page = browser.new_page("about:blank")
+    let handle = tokio::spawn(async move { while let Some(_event) = handler.next().await {} });
+
+    let page = browser
+        .new_page("about:blank")
         .await
         .context("Error al crear página")?;
-    
+
     // Navegar a SADE
     on_status("Navegando a SADE...");
     page.goto("http://euc.gcba.gob.ar/ccoo-web/")
         .await
         .context("Error al navegar a SADE")?;
-    
+
     sleep(Duration::from_secs(2)).await;
-    
+
     // Login
     on_status("Iniciando sesión...");
-    
+
     // Buscar campos de texto
-    let inputs = page.find_elements(".form-control.z-textbox").await?;
-    if inputs.len() >= 2 {
-        inputs[0].click().await?.type_str(&credenciales.usuario).await?;
-        inputs[1].click().await?.type_str(&credenciales.password).await?;
+    let mut inputs = page.find_elements(".form-control.z-textbox").await?;
+
+    // Si no hay campos de login, probablemente hay una sesión activa - hacer logout
+    if inputs.len() < 2 {
+        on_status("Sesión existente detectada, cerrando sesión...");
+
+        // Buscar y hacer clic en el botón de logout
+        let logout_btn = page
+            .find_elements(".z-icon-sign-out.texto-header-unificado.z-span")
+            .await?;
+        if !logout_btn.is_empty() {
+            logout_btn[0].click().await?;
+
+            // Esperar a que se complete el logout
+            sleep(Duration::from_secs(2)).await;
+
+            // Navegar de nuevo a la página para tener un estado limpio
+            on_status("Navegando a SADE nuevamente...");
+            page.goto("http://euc.gcba.gob.ar/ccoo-web/")
+                .await
+                .context("Error al navegar a SADE después del logout")?;
+
+            sleep(Duration::from_secs(2)).await;
+
+            // Volver a buscar los campos de login
+            inputs = page.find_elements(".form-control.z-textbox").await?;
+        }
     }
-    
-    // Click en botón de login
-    let login_btn = page.find_element(".btn.btn-default.z-button").await?;
-    login_btn.click().await?;
-    
+
+    // Ahora hacer login
+    if inputs.len() >= 2 {
+        on_status("Ingresando credenciales...");
+        inputs[0]
+            .click()
+            .await?
+            .type_str(&credenciales.usuario)
+            .await?;
+        inputs[1]
+            .click()
+            .await?
+            .type_str(&credenciales.password)
+            .await?;
+
+        // Click en botón de login
+        let login_btn = page.find_element(".btn.btn-default.z-button").await?;
+        login_btn.click().await?;
+    } else {
+        anyhow::bail!("No se encontraron los campos de login después de intentar logout");
+    }
+
     sleep(Duration::from_secs(2)).await;
-    
+
     // Navegar a Bandeja CO
     on_status("Navegando a Bandeja CO...");
     let tabs = page.find_elements(".z-tab-text").await?;
     if tabs.len() > 3 {
         tabs[3].click().await?;
     }
-    
-    sleep(Duration::from_secs(1)).await;
-    
+
+    sleep(Duration::from_secs(2)).await;
+
     // Seleccionar ver 100 elementos
     let botones = page.find_elements(".boton-sin-caja.z-button").await?;
     if botones.len() > 27 {
         botones[27].click().await?;
     }
-    
-    sleep(Duration::from_millis(500)).await;
-    
+
+    sleep(Duration::from_secs(1)).await;
+
     // Calcular páginas a avanzar
     let paginas_completas = (inicio - 1) / 100;
-    
+
     if paginas_completas > 0 {
         on_status(&format!("Avanzando a página {}...", paginas_completas + 1));
         for _ in 0..paginas_completas {
@@ -111,11 +153,11 @@ pub async fn descargar_comunicaciones(
             }
         }
     }
-    
+
     // Procesar comunicaciones
     let mut comunicaciones_procesadas = 0u32;
     let total_comunicaciones = final_ - inicio + 1;
-    
+
     for num_comunicacion in inicio..=final_ {
         on_status(&format!(
             "Descargando comunicación {} ({} de {})",
@@ -123,9 +165,9 @@ pub async fn descargar_comunicaciones(
             comunicaciones_procesadas + 1,
             total_comunicaciones
         ));
-        
+
         let indice_actual = ((num_comunicacion - 1) % 100) as usize;
-        
+
         // Si llegamos al índice 0 y no es la primera comunicación, avanzar página
         if indice_actual == 0 && num_comunicacion != inicio {
             let next_btns = page.find_elements(".z-paging-button.z-paging-next").await?;
@@ -134,41 +176,44 @@ pub async fn descargar_comunicaciones(
                 sleep(Duration::from_secs(1)).await;
             }
         }
-        
-        sleep(Duration::from_millis(500)).await;
-        
+
+        sleep(Duration::from_secs(1)).await;
+
         // Hacer clic en la comunicación
         let search_icons = page.find_elements(".z-icon-search.z-span").await?;
         if search_icons.len() > indice_actual {
             if let Err(e) = search_icons[indice_actual].click().await {
-                eprintln!("Error al hacer clic en comunicación {}: {}", num_comunicacion, e);
+                eprintln!(
+                    "Error al hacer clic en comunicación {}: {}",
+                    num_comunicacion, e
+                );
                 continue;
             }
         }
-        
+
         sleep(Duration::from_secs(1)).await;
-        
+
         // Descargar archivos adjuntos
         loop {
-            sleep(Duration::from_millis(700)).await;
+            sleep(Duration::from_secs(1)).await;
             let download_icons = page.find_elements(".z-icon-download").await?;
-            
+
             if download_icons.is_empty() {
                 break;
             }
-            
+
             // Descargar todos los archivos excepto el primero
             for i in 1..download_icons.len() {
                 if let Err(e) = download_icons[i].click().await {
                     eprintln!("Error descargando archivo {}: {}", i, e);
                 }
                 // Espera corta entre clics de descarga
-                sleep(Duration::from_millis(500)).await;
+                sleep(Duration::from_secs(1)).await;
             }
-            
+
             // Espera fija para que las descargas terminen (2 segundos)
             sleep(Duration::from_secs(2)).await;
-            
+
             // Verificar si hay más páginas de adjuntos
             let next_btns = page.find_elements(".z-paging-button.z-paging-next").await?;
             if next_btns.len() > 1 {
@@ -180,25 +225,25 @@ pub async fn descargar_comunicaciones(
                 break;
             }
         }
-        
+
         // Volver a la lista
         let volver_btns = page.find_elements(".btn.z-button").await?;
         if !volver_btns.is_empty() {
             volver_btns[0].click().await?;
         }
-        
-        sleep(Duration::from_millis(500)).await;
+
+        sleep(Duration::from_secs(1)).await;
         comunicaciones_procesadas += 1;
     }
-    
+
     // Espera final breve antes de cerrar
     on_status("Finalizando...");
     sleep(Duration::from_secs(3)).await;
-    
+
     // Cerrar navegador
     drop(browser);
     handle.abort();
-    
+
     Ok(ResultadoDescarga {
         comunicaciones_procesadas,
         total_comunicaciones,
