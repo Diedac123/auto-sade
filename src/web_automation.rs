@@ -6,6 +6,38 @@ use std::path::PathBuf;
 use std::time::Duration;
 use tokio::time::sleep;
 
+/// Espera hasta que no haya archivos .crdownload en la carpeta de descargas
+/// Retorna true si las descargas terminaron, false si se agotó el tiempo
+async fn esperar_descargas_completas(ruta_descargas: &PathBuf, timeout_secs: u64) -> bool {
+    let inicio = std::time::Instant::now();
+    let timeout = Duration::from_secs(timeout_secs);
+
+    loop {
+        // Verificar si hay archivos .crdownload
+        let hay_pendientes = if let Ok(entries) = std::fs::read_dir(ruta_descargas) {
+            entries.filter_map(|e| e.ok()).any(|entry| {
+                entry
+                    .path()
+                    .extension()
+                    .map(|ext| ext == "crdownload")
+                    .unwrap_or(false)
+            })
+        } else {
+            false
+        };
+
+        if !hay_pendientes {
+            return true;
+        }
+
+        if inicio.elapsed() >= timeout {
+            return false;
+        }
+
+        sleep(Duration::from_millis(500)).await;
+    }
+}
+
 /// Resultado de la descarga de comunicaciones
 #[derive(Debug, Default)]
 pub struct ResultadoDescarga {
@@ -40,6 +72,8 @@ pub async fn descargar_comunicaciones(
         .arg("--disable-restore-session-state") // Evita restaurar sesión anterior
         .arg("--disable-background-networking")
         .arg("--hide-crash-restore-bubble") // Oculta popup de restauración
+        .arg("--disable-translate") // Desactiva popup de traducción
+        .arg("--disable-features=TranslateUI") // Desactiva UI de traducción
         // Permitir descargas múltiples automáticamente
         .arg("--safebrowsing-disable-download-protection")
         .arg("--disable-features=DownloadBubble,DownloadBubbleV2")
@@ -150,7 +184,7 @@ pub async fn descargar_comunicaciones(
         botones[27].click().await?;
     }
 
-    sleep(Duration::from_secs(1)).await;
+    sleep(Duration::from_secs(2)).await;
 
     // Calcular páginas a avanzar
     let paginas_completas = (inicio - 1) / 100;
@@ -214,17 +248,26 @@ pub async fn descargar_comunicaciones(
                 break;
             }
 
+            let cantidad_archivos = download_icons.len() - 1; // Menos el primero que no se descarga
+
             // Descargar todos los archivos excepto el primero
             for i in 1..download_icons.len() {
                 if let Err(e) = download_icons[i].click().await {
                     eprintln!("Error descargando archivo {}: {}", i, e);
                 }
-                // Espera corta entre clics de descarga
-                sleep(Duration::from_secs(1)).await;
+                // Espera mínima entre clics (solo para que el navegador procese)
+                sleep(Duration::from_millis(300)).await;
             }
 
-            // Espera fija para que las descargas terminen (2 segundos)
-            sleep(Duration::from_secs(2)).await;
+            // Espera inicial para que Chrome cree los archivos .crdownload
+            sleep(Duration::from_secs(1)).await;
+
+            // Esperar a que las descargas terminen (verificando archivos .crdownload)
+            // Timeout máximo proporcional a cantidad de archivos (mínimo 10s, máximo 30s)
+            let timeout_descarga = std::cmp::min(10 + (cantidad_archivos as u64 * 3), 30);
+            if !esperar_descargas_completas(&ruta_descargas, timeout_descarga).await {
+                eprintln!("Advertencia: Algunas descargas pueden no haber terminado");
+            }
 
             // Verificar si hay más páginas de adjuntos
             let next_btns = page.find_elements(".z-paging-button.z-paging-next").await?;
