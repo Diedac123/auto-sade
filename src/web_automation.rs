@@ -32,6 +32,18 @@ pub async fn descargar_comunicaciones(
     // Configurar navegador con opciones para permitir descargas inseguras
     let browser_config = BrowserConfig::builder()
         .with_head() // Mostrar navegador (no headless)
+        // Suprimir popups y diálogos
+        .arg("--no-first-run")
+        .arg("--no-default-browser-check")
+        .arg("--disable-session-crashed-bubble")
+        .arg("--disable-infobars")
+        .arg("--disable-restore-session-state") // Evita restaurar sesión anterior
+        .arg("--disable-background-networking")
+        .arg("--hide-crash-restore-bubble") // Oculta popup de restauración
+        // Permitir descargas múltiples automáticamente
+        .arg("--safebrowsing-disable-download-protection")
+        .arg("--disable-features=DownloadBubble,DownloadBubbleV2")
+        // Seguridad relajada para la página
         .arg("--disable-web-security")
         .arg("--allow-running-insecure-content")
         .arg("--disable-features=IsolateOrigins,site-per-process")
