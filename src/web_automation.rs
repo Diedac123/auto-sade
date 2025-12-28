@@ -72,17 +72,14 @@ pub async fn descargar_comunicaciones(
         .arg("--disable-restore-session-state") // Evita restaurar sesión anterior
         .arg("--disable-background-networking")
         .arg("--hide-crash-restore-bubble") // Oculta popup de restauración
-        .arg("--disable-translate") // Desactiva popup de traducción
-        .arg("--disable-features=TranslateUI") // Desactiva UI de traducción
+        // Desactiva popup de traducción y otras características no deseadas en una sola bandera
+        .arg("--disable-features=Translate,TranslateUI,DownloadBubble,DownloadBubbleV2,IsolateOrigins,site-per-process,BlockInsecurePrivateNetworkRequests")
         // Permitir descargas múltiples automáticamente
         .arg("--safebrowsing-disable-download-protection")
-        .arg("--disable-features=DownloadBubble,DownloadBubbleV2")
         // Seguridad relajada para la página
         .arg("--disable-web-security")
         .arg("--allow-running-insecure-content")
-        .arg("--disable-features=IsolateOrigins,site-per-process")
         .arg("--disable-site-isolation-trials")
-        .arg("--disable-features=BlockInsecurePrivateNetworkRequests")
         .arg("--unsafely-treat-insecure-origin-as-secure=http://euc.gcba.gob.ar")
         .arg("--ignore-certificate-errors")
         .arg("--disable-popup-blocking")
