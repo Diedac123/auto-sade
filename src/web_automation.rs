@@ -38,6 +38,8 @@ fn setup_custom_profile() -> Result<PathBuf> {
 async fn esperar_descargas_completas(ruta_descargas: &PathBuf, timeout_secs: u64) -> bool {
     let inicio = std::time::Instant::now();
     let timeout = Duration::from_secs(timeout_secs);
+    let tiempo_estabilidad = Duration::from_secs(2); // Debe estar estable 2 segundos sin .crdownload
+    let mut inicio_estabilidad: Option<std::time::Instant> = None;
 
     loop {
         // Verificar si hay archivos .crdownload
@@ -53,8 +55,21 @@ async fn esperar_descargas_completas(ruta_descargas: &PathBuf, timeout_secs: u64
             false
         };
 
-        if !hay_pendientes {
-            return true;
+        if hay_pendientes {
+            // Si hay pendientes, reseteamos el contador de estabilidad
+            inicio_estabilidad = None;
+        } else {
+            // Si no hay pendientes, iniciamos o chequeamos el contador de estabilidad
+            match inicio_estabilidad {
+                None => {
+                    inicio_estabilidad = Some(std::time::Instant::now());
+                }
+                Some(instante) => {
+                    if instante.elapsed() >= tiempo_estabilidad {
+                        return true;
+                    }
+                }
+            }
         }
 
         if inicio.elapsed() >= timeout {
@@ -289,12 +304,12 @@ pub async fn descargar_comunicaciones(
                 sleep(Duration::from_millis(300)).await;
             }
 
-            // Espera inicial para que Chrome cree los archivos .crdownload
-            sleep(Duration::from_secs(1)).await;
+            // Espera inicial de 3s para asegurar que Chrome cree los archivos .crdownload
+            sleep(Duration::from_secs(3)).await;
 
             // Esperar a que las descargas terminen (verificando archivos .crdownload)
-            // Timeout máximo proporcional a cantidad de archivos (mínimo 10s, máximo 30s)
-            let timeout_descarga = std::cmp::min(10 + (cantidad_archivos as u64 * 3), 30);
+            // Timeout reducido a 10s por pedido del usuario
+            let timeout_descarga = 1;
             if !esperar_descargas_completas(&ruta_descargas, timeout_descarga).await {
                 eprintln!("Advertencia: Algunas descargas pueden no haber terminado");
             }
@@ -318,6 +333,13 @@ pub async fn descargar_comunicaciones(
         }
 
         sleep(Duration::from_secs(1)).await;
+
+        // Si es la última comunicación, esperamos 10 segundos extra antes de cerrar
+        if num_comunicacion == final_ {
+            on_status("Esperando 10s extra por seguridad al ser la última comunicación...");
+            sleep(Duration::from_secs(10)).await;
+        }
+
         comunicaciones_procesadas += 1;
     }
 
