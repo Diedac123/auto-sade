@@ -167,7 +167,7 @@ pub async fn descargar_comunicaciones(
         anyhow::bail!("No se encontraron los campos de login después de intentar logout");
     }
 
-    sleep(Duration::from_secs(2)).await;
+    sleep(Duration::from_secs(3)).await;
 
     // Navegar a Bandeja CO
     on_status("Navegando a Bandeja CO...");
@@ -184,7 +184,7 @@ pub async fn descargar_comunicaciones(
         botones[27].click().await?;
     }
 
-    sleep(Duration::from_secs(2)).await;
+    sleep(Duration::from_secs(3)).await;
 
     // Calcular páginas a avanzar
     let paginas_completas = (inicio - 1) / 100;
@@ -195,7 +195,7 @@ pub async fn descargar_comunicaciones(
             let next_btns = page.find_elements(".z-paging-button.z-paging-next").await?;
             if next_btns.len() > 5 {
                 next_btns[5].click().await?;
-                sleep(Duration::from_secs(1)).await;
+                sleep(Duration::from_secs(2)).await;
             }
         }
     }
