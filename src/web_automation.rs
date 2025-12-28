@@ -293,8 +293,6 @@ pub async fn descargar_comunicaciones(
                 break;
             }
 
-            let cantidad_archivos = download_icons.len() - 1; // Menos el primero que no se descarga
-
             // Descargar todos los archivos excepto el primero
             for i in 1..download_icons.len() {
                 if let Err(e) = download_icons[i].click().await {
