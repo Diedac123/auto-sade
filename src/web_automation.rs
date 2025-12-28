@@ -6,6 +6,33 @@ use std::path::PathBuf;
 use std::time::Duration;
 use tokio::time::sleep;
 
+/// Configura un perfil temporal con preferencias para desactivar traducción
+fn setup_custom_profile() -> Result<PathBuf> {
+    let mut temp_dir = std::env::temp_dir();
+    let unique_id = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)?
+        .as_nanos();
+    temp_dir.push(format!("auto_sade_profile_{}", unique_id));
+
+    let default_dir = temp_dir.join("Default");
+    std::fs::create_dir_all(&default_dir).context("No se pudo crear directorio del perfil")?;
+
+    let prefs_path = default_dir.join("Preferences");
+    let prefs_content = r#"{
+        "translate": { "enabled": false },
+        "profile": { 
+            "password_manager_enabled": false,
+            "default_content_setting_values": { "automatic_downloads": 1 }
+        },
+        "credentials_enable_service": false
+    }"#;
+
+    std::fs::write(prefs_path, prefs_content)
+        .context("No se pudo escribir archivo de preferencias")?;
+
+    Ok(temp_dir)
+}
+
 /// Espera hasta que no haya archivos .crdownload en la carpeta de descargas
 /// Retorna true si las descargas terminaron, false si se agotó el tiempo
 async fn esperar_descargas_completas(ruta_descargas: &PathBuf, timeout_secs: u64) -> bool {
@@ -61,17 +88,23 @@ pub async fn descargar_comunicaciones(
     // Obtener carpeta de descargas
     let ruta_descargas = dirs::download_dir().unwrap_or_else(|| PathBuf::from("."));
 
+    // Configurar perfil personalizado para preferencias
+    let user_data_dir = setup_custom_profile()?;
+
     // Configurar navegador con opciones para permitir descargas inseguras
     let browser_config = BrowserConfig::builder()
+        .user_data_dir(&user_data_dir)
         .with_head() // Mostrar navegador (no headless)
         // Suprimir popups y diálogos
         .arg("--no-first-run")
         .arg("--no-default-browser-check")
         .arg("--disable-session-crashed-bubble")
+        .arg("--disable-session-crashed-bubble")
         .arg("--disable-infobars")
         .arg("--disable-restore-session-state") // Evita restaurar sesión anterior
         .arg("--disable-background-networking")
         .arg("--hide-crash-restore-bubble") // Oculta popup de restauración
+        .arg("--lang=es-419") // Forzar idioma español
         // Desactiva popup de traducción y otras características no deseadas en una sola bandera
         .arg("--disable-features=Translate,TranslateUI,DownloadBubble,DownloadBubbleV2,IsolateOrigins,site-per-process,BlockInsecurePrivateNetworkRequests")
         // Permitir descargas múltiples automáticamente
@@ -181,7 +214,7 @@ pub async fn descargar_comunicaciones(
         botones[27].click().await?;
     }
 
-    sleep(Duration::from_secs(3)).await;
+    sleep(Duration::from_secs(4)).await;
 
     // Calcular páginas a avanzar
     let paginas_completas = (inicio - 1) / 100;
@@ -295,6 +328,27 @@ pub async fn descargar_comunicaciones(
     // Cerrar navegador
     drop(browser);
     handle.abort();
+
+    // Dar tiempo al SO para liberar los archivos (Windows suele ser lento liberando locks)
+    sleep(Duration::from_secs(2)).await;
+
+    // Limpiar perfil temporal con reintentos
+    let mut clean_retries = 5;
+    while clean_retries > 0 {
+        if let Err(e) = std::fs::remove_dir_all(&user_data_dir) {
+            if clean_retries == 1 {
+                eprintln!(
+                    "Advertencia: No se pudo limpiar el perfil temporal tras varios intentos: {}",
+                    e
+                );
+            } else {
+                sleep(Duration::from_secs(1)).await;
+            }
+        } else {
+            break;
+        }
+        clean_retries -= 1;
+    }
 
     Ok(ResultadoDescarga {
         comunicaciones_procesadas,
