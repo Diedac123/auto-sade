@@ -293,17 +293,17 @@ pub async fn descargar_comunicaciones(
                 break;
             }
 
-            // Descargar todos los archivos excepto el primero
-            for i in 1..download_icons.len() {
-                if let Err(e) = download_icons[i].click().await {
-                    eprintln!("Error descargando archivo {}: {}", i, e);
+            // Descargar solo el primer archivo (índice 1), si existe
+            if download_icons.len() > 1 {
+                if let Err(e) = download_icons[1].click().await {
+                    eprintln!("Error descargando el primer archivo: {}", e);
                 }
-                // Espera mínima entre clics (solo para que el navegador procese)
+                // Espera mínima para que el navegador procese
                 sleep(Duration::from_millis(300)).await;
             }
 
             // Espera inicial de 3s para asegurar que Chrome cree los archivos .crdownload
-            sleep(Duration::from_secs(3)).await;
+            sleep(Duration::from_secs(1)).await;
 
             // Esperar a que las descargas terminen (verificando archivos .crdownload)
             // Timeout reducido a 10s por pedido del usuario
@@ -332,10 +332,10 @@ pub async fn descargar_comunicaciones(
 
         sleep(Duration::from_secs(1)).await;
 
-        // Si es la última comunicación, esperamos 10 segundos extra antes de cerrar
+        // Si es la última comunicación, esperamos 5 segundos extra antes de cerrar
         if num_comunicacion == final_ {
-            on_status("Esperando 10s extra por seguridad al ser la última comunicación...");
-            sleep(Duration::from_secs(10)).await;
+            on_status("Esperando 5s extra por seguridad al ser la última comunicación...");
+            sleep(Duration::from_secs(5)).await;
         }
 
         comunicaciones_procesadas += 1;
