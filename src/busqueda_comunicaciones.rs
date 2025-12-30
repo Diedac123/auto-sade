@@ -7,6 +7,7 @@ use anyhow::{Context, Result};
 use calamine::{open_workbook, Reader, Xlsx};
 use chromiumoxide::browser::{Browser, BrowserConfig};
 use futures::StreamExt;
+use regex::Regex;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 use tokio::time::sleep;
@@ -254,12 +255,26 @@ pub async fn buscar_comunicaciones(
     let mut descargadas = 0;
 
     // Procesar cada comunicación
+    // Regex para validar formato de comunicación
+    let patron_ccoo =
+        Regex::new(r"^NO-\d{4}-\d+-GCABA-[A-Za-z0-9]+$").expect("Regex de comunicación inválido");
+
     for (idx, comunicacion) in comunicaciones.iter().enumerate() {
+        // Saltear comunicaciones que no coincidan con el patrón esperado
+        if !patron_ccoo.is_match(comunicacion) {
+            on_status(&format!(
+                "Salteando comunicación {} de {} (formato inválido: {})",
+                idx + 1,
+                total,
+                comunicacion
+            ));
+            continue;
+        }
+
         on_status(&format!(
-            "Descargando comunicación {} de {}: {}",
+            "Descargando comunicación {} de {}",
             idx + 1,
             total,
-            comunicacion
         ));
 
         // Buscar campo de texto para número de comunicación
