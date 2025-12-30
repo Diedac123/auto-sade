@@ -38,6 +38,9 @@ thiserror = "2"
 walkdir = "2"
 dirs = "5"
 
+# Diálogos de archivo nativos
+rfd = "0.15"
+
 # Icono de ventana
 image = { version = "0.25", default-features = false, features = ["ico"] }
 
