@@ -1,10 +1,24 @@
 use anyhow::{Context, Result};
-use chrono::NaiveDateTime;
+use chrono::{NaiveDate, NaiveDateTime};
 use lopdf::Document;
 use pdf_extract::extract_text;
 use regex::Regex;
 use std::fs;
 use std::path::Path;
+
+/// Decodifica bytes de un PDF, intentando primero UTF-8 y luego Latin-1 (ISO-8859-1)
+/// Esto es necesario para manejar correctamente caracteres especiales del español
+/// como acentos (á, é, í, ó, ú), la ñ, diéresis (ü), etc.
+fn decodificar_texto_pdf(bytes: &[u8]) -> String {
+    // Primero intentamos UTF-8
+    if let Ok(texto) = std::str::from_utf8(bytes) {
+        return texto.to_string();
+    }
+
+    // Si falla, asumimos Latin-1 (ISO-8859-1) que es común en PDFs en español
+    // Latin-1 mapea directamente bytes 0-255 a caracteres Unicode
+    bytes.iter().map(|&b| b as char).collect()
+}
 
 /// Datos extraídos de un PDF
 #[derive(Debug, Clone)]
@@ -12,16 +26,16 @@ pub struct DatosPdf {
     pub ccoo: String,
     pub organismo: String,
     pub patrimonial: String,
-    pub fecha: String,
+    pub fecha: Option<NaiveDate>,
     pub resultado: String,
 }
 
 /// Extrae el organismo de las anotaciones del PDF
 /// Equivalente a `extraer_organismo` en Python (usa pikepdf)
 pub fn extraer_organismo(ruta_pdf: &Path) -> Result<String> {
-    let doc = Document::load(ruta_pdf)
-        .with_context(|| format!("Error al cargar PDF: {:?}", ruta_pdf))?;
-    
+    let doc =
+        Document::load(ruta_pdf).with_context(|| format!("Error al cargar PDF: {:?}", ruta_pdf))?;
+
     // Iterar sobre las páginas
     for page_id in doc.page_iter() {
         if let Ok(page) = doc.get_dictionary(page_id) {
@@ -30,7 +44,7 @@ pub fn extraer_organismo(ruta_pdf: &Path) -> Result<String> {
                 Ok(a) => a,
                 Err(_) => continue,
             };
-            
+
             // Las anotaciones pueden ser un array directo o una referencia
             let annots_array = if let Ok(arr) = annots.as_array() {
                 arr.clone()
@@ -47,7 +61,7 @@ pub fn extraer_organismo(ruta_pdf: &Path) -> Result<String> {
             } else {
                 continue;
             };
-            
+
             for annot_ref in &annots_array {
                 // Obtener el diccionario de la anotación
                 let annot = if let Ok(ref_id) = annot_ref.as_reference() {
@@ -60,40 +74,36 @@ pub fn extraer_organismo(ruta_pdf: &Path) -> Result<String> {
                 } else {
                     continue;
                 };
-                
+
                 // Obtener el nombre de la anotación (/T)
                 let annot_name = if let Ok(t_value) = annot.get(b"T") {
                     // Puede ser name o string
                     if let Ok(name) = t_value.as_name_str() {
                         name.to_string()
                     } else if let Ok(bytes) = t_value.as_str() {
-                        String::from_utf8_lossy(bytes).to_string()
+                        decodificar_texto_pdf(bytes)
                     } else {
                         continue;
                     }
                 } else {
                     continue;
                 };
-                
+
                 // Buscar "reparticion_0"
                 if annot_name == "reparticion_0" {
                     if let Ok(v_value) = annot.get(b"V") {
                         // El valor puede ser string o bytes
                         let value = if let Ok(bytes) = v_value.as_str() {
-                            String::from_utf8_lossy(bytes).to_string()
+                            decodificar_texto_pdf(bytes)
                         } else if let Ok(name) = v_value.as_name_str() {
                             name.to_string()
                         } else {
                             continue;
                         };
-                        
+
                         // Tomar solo la primera línea
-                        let organismo = value
-                            .lines()
-                            .next()
-                            .unwrap_or("")
-                            .to_string();
-                        
+                        let organismo = value.lines().next().unwrap_or("").to_string();
+
                         if !organismo.is_empty() {
                             return Ok(organismo);
                         }
@@ -105,9 +115,9 @@ pub fn extraer_organismo(ruta_pdf: &Path) -> Result<String> {
     Ok(String::new())
 }
 
-/// Convierte la fecha del PDF al formato dd/mm/aaaa
-/// Equivalente a `convertir_fecha_pdf` en Python
-pub fn convertir_fecha_pdf(fecha_pdf: &str) -> Result<String> {
+/// Convierte la fecha del PDF a NaiveDate
+/// Retorna Option para permitir manejo de fechas inválidas
+pub fn convertir_fecha_pdf(fecha_pdf: &str) -> Option<NaiveDate> {
     // Eliminar prefijo "D:" y zona horaria
     let fecha_limpia = fecha_pdf
         .strip_prefix("D:")
@@ -118,16 +128,15 @@ pub fn convertir_fecha_pdf(fecha_pdf: &str) -> Result<String> {
         .split('+')
         .next()
         .unwrap_or("");
-    
+
     if fecha_limpia.len() < 14 {
-        return Ok(String::new());
+        return None;
     }
-    
+
     // Parsear la fecha (formato: YYYYMMDDHHMMSS)
-    let fecha_parseada = NaiveDateTime::parse_from_str(fecha_limpia, "%Y%m%d%H%M%S")
-        .context("Error al parsear fecha del PDF")?;
-    
-    Ok(fecha_parseada.format("%d/%m/%Y").to_string())
+    let fecha_parseada = NaiveDateTime::parse_from_str(fecha_limpia, "%Y%m%d%H%M%S").ok()?;
+
+    Some(fecha_parseada.date())
 }
 
 /// Extrae el código patrimonial del texto
@@ -141,7 +150,7 @@ pub fn extraer_patrimonial(texto: &str) -> Option<String> {
 /// Equivalente a `extraer_resultado` en Python
 pub fn extraer_resultado(texto: &str) -> String {
     let texto_sin_espacios = texto.replace(' ', "");
-    
+
     let patrones = [
         r"(?i)sinnovedad",
         r"(?i)sinnovedades",
@@ -183,7 +192,7 @@ pub fn extraer_resultado(texto: &str) -> String {
         r"(?i)noarrojanovedad",
         r"(?i)notuvonovedad",
     ];
-    
+
     for patron in &patrones {
         if let Ok(regex) = Regex::new(patron) {
             if regex.is_match(&texto_sin_espacios) {
@@ -191,7 +200,7 @@ pub fn extraer_resultado(texto: &str) -> String {
             }
         }
     }
-    
+
     "Con novedades (ver)".to_string()
 }
 
@@ -199,69 +208,74 @@ pub fn extraer_resultado(texto: &str) -> String {
 /// Equivalente a `procesar_pdfs` en Python
 pub fn procesar_pdfs(ruta_archivos: &Path) -> Result<Vec<DatosPdf>> {
     let mut lista_datos = Vec::new();
-    
+
     // Crear directorios de destino si no existen
     let dir_procesados = ruta_archivos.join("Procesados");
     let dir_revisar = ruta_archivos.join("Revisar");
     fs::create_dir_all(&dir_procesados)?;
     fs::create_dir_all(&dir_revisar)?;
-    
+
     let entries = fs::read_dir(ruta_archivos)
         .with_context(|| format!("Error al leer directorio: {:?}", ruta_archivos))?;
-    
+
     for entry in entries.flatten() {
         let path = entry.path();
-        
+
         // Solo procesar archivos PDF
         if path.extension().and_then(|e| e.to_str()) != Some("pdf") {
             continue;
         }
-        
-        let archivo_pdf = path.file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or("");
-        
-        let ccoo = path.file_stem()
+
+        let archivo_pdf = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+
+        let ccoo = path
+            .file_stem()
             .and_then(|n| n.to_str())
             .unwrap_or("")
             .to_string();
-        
+
         // Extraer texto del PDF
         let texto = match extract_text(&path) {
-            Ok(t) => t.replace('\n', " ")
+            Ok(t) => t
+                .replace('\n', " ")
                 .chars()
                 .filter(|c| !c.is_control())
                 .collect::<String>(),
             Err(_) => continue,
         };
-        
+
         // Extraer fecha de metadatos
-        let fecha = if let Ok(doc) = Document::load(&path) {
-            if let Some(info) = doc.trailer.get(b"Info").ok().and_then(|i| i.as_reference().ok()) {
+        let fecha: Option<NaiveDate> = if let Ok(doc) = Document::load(&path) {
+            if let Some(info) = doc
+                .trailer
+                .get(b"Info")
+                .ok()
+                .and_then(|i| i.as_reference().ok())
+            {
                 if let Ok(info_dict) = doc.get_dictionary(info) {
-                    info_dict.get(b"ModDate")
+                    info_dict
+                        .get(b"ModDate")
                         .ok()
                         .and_then(|d| d.as_str().ok())
                         .and_then(|s| {
-                            let s_str = String::from_utf8_lossy(s);
-                            convertir_fecha_pdf(&s_str).ok()
+                            let s_str = decodificar_texto_pdf(s);
+                            convertir_fecha_pdf(&s_str)
                         })
-                        .unwrap_or_default()
                 } else {
-                    String::new()
+                    None
                 }
             } else {
-                String::new()
+                None
             }
         } else {
-            String::new()
+            None
         };
-        
+
         // Extraer datos
         let organismo = extraer_organismo(&path).unwrap_or_default();
         let patrimonial = extraer_patrimonial(&texto).unwrap_or_default();
         let resultado = extraer_resultado(&texto);
-        
+
         lista_datos.push(DatosPdf {
             ccoo,
             organismo,
@@ -269,18 +283,18 @@ pub fn procesar_pdfs(ruta_archivos: &Path) -> Result<Vec<DatosPdf>> {
             fecha,
             resultado: resultado.clone(),
         });
-        
+
         // Mover archivo según resultado
         let destino = if resultado == "Sin novedad" {
             dir_procesados.join(archivo_pdf)
         } else {
             dir_revisar.join(archivo_pdf)
         };
-        
+
         if let Err(e) = fs::rename(&path, &destino) {
             eprintln!("Error al mover archivo {}: {}", archivo_pdf, e);
         }
     }
-    
+
     Ok(lista_datos)
 }
